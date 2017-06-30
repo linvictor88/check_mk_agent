@@ -32,7 +32,7 @@ from eventlet import greenpool
 from eventlet import pools
 from eventlet import queue
 from eventlet import semaphore
-from oslo.config import cfg
+from oslo_config import cfg
 import six
 
 

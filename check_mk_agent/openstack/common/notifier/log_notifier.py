@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common import jsonutils
 from check_mk_agent.openstack.common import log as logging

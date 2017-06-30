@@ -25,7 +25,7 @@ For some wrappers that add message versioning to rpc, see:
 
 import inspect
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common.gettextutils import _
 from check_mk_agent.openstack.common import importutils

@@ -35,7 +35,7 @@ except ImportError:
     UnsupportedOperation = None
 
 import eventlet
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common import eventlet_backdoor
 from check_mk_agent.openstack.common.gettextutils import _

@@ -1,0 +1,8 @@
+eventlet
+oslo.config
+Paste
+PasteDeploy
+SQLAlchemy
+Babel
+iso8601
+numpy

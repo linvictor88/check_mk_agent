@@ -37,7 +37,7 @@ import re
 import sys
 import traceback
 
-from oslo.config import cfg
+from oslo_config import cfg
 import six
 from six import moves
 
@@ -46,6 +46,8 @@ from check_mk_agent.openstack.common import importutils
 from check_mk_agent.openstack.common import jsonutils
 from check_mk_agent.openstack.common import local
 
+
+_AVAILABLE_METRICS = ["cpu", "mem", "system", "disks", "nets", "perf"]
 
 _DEFAULT_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -118,13 +120,40 @@ logging_cli_opts = [
                 help='Use syslog for logging.'),
     cfg.StrOpt('syslog-log-facility',
                default='LOG_USER',
-               help='syslog facility to receive log lines')
-]
-
-generic_log_opts = [
-    cfg.BoolOpt('use_stderr',
-                default=True,
-                help='Log output to standard error')
+               help='syslog facility to receive log lines'),
+    cfg.StrOpt('monitor-metrics',
+               default='cpu,mem',
+               help='define monitor metrics'),
+    cfg.StrOpt('monitor-start',
+               default='0',
+               help='Limit the monitor start timestamp'),
+    cfg.StrOpt('monitor-stop',
+               default='0',
+               help='Limit the monitor stop timestamp'),
+    cfg.BoolOpt('use-stderr',
+                default=False,
+                help='Log output to standard error'),
+    cfg.BoolOpt('pprint',
+                default=False,
+                help='print output beautifully'),
+    cfg.StrOpt('mute-idlecpu',
+                default=90,
+                help='mute idle cpu (%) info show'),
+    cfg.StrOpt('dp-pid',
+                default="",
+                help='datapath process pid which is MUST for perf metric'),
+    cfg.StrOpt('cpu-fields',
+                default="system,user,idle",
+                help='datapath process pid which is MUST for perf metric'),
+    cfg.BoolOpt('monitor-qemu',
+                default=False,
+                help='monitor qemu relative processes.'),
+    cfg.BoolOpt('monitor-ovs-kernel',
+                default=False,
+                help='monitor ovs kernel relative processes(ksoftirqd, vhost).'),
+    cfg.BoolOpt("show-cpu-details",
+                default=False,
+                help='show cpu details'),
 ]
 
 log_opts = [
@@ -178,7 +207,6 @@ log_opts = [
 CONF = cfg.CONF
 CONF.register_cli_opts(common_cli_opts)
 CONF.register_cli_opts(logging_cli_opts)
-CONF.register_opts(generic_log_opts)
 CONF.register_opts(log_opts)
 
 # our new audit level
@@ -229,6 +257,26 @@ def _get_log_file_path(binary=None):
         return '%s.log' % (os.path.join(logdir, binary),)
 
     return None
+
+
+def get_supported_metrics():
+    monitor_metrics = CONF.monitor_metrics
+    # import pdb; pdb.set_trace()
+    supported_metrics = []
+    for ele in monitor_metrics.split(","):
+        ele = ele.strip()
+        if ele in _AVAILABLE_METRICS:
+            supported_metrics.append(ele)
+        else:
+            err_msg = "%s is not a supported metric" % ele
+            sys.exit(err_msg)
+    return supported_metrics
+
+
+def get_monitor_time_range():
+    start_time = CONF.monitor_start
+    stop_time = CONF.monitor_stop
+    return (float(start_time), float(stop_time))
 
 
 def mask_password(message, secret="***"):
@@ -472,6 +520,7 @@ def _setup_logging_from_conf():
     if logpath:
         filelog = logging.handlers.WatchedFileHandler(logpath)
         log_root.addHandler(filelog)
+        log_root.propagate = False
 
     if CONF.use_stderr:
         streamlog = ColorHandler()

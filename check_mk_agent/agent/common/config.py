@@ -21,7 +21,7 @@ Routines for configuring check_mk agent
 
 import os
 
-from oslo.config import cfg
+from oslo_config import cfg
 from paste import deploy
 
 from check_mk_agent.common import utils
@@ -113,10 +113,15 @@ def setup_logging(conf):
 
     :param conf: a cfg.ConfOpts object
     """
-    product_name = "check_mk"
+    product_name = "check_mk_agent"
     logging.setup(product_name)
     LOG.info(_("Logging enabled!"))
 
+def get_supported_metrics():
+    return logging.get_supported_metrics()
+
+def get_monitor_time_range():
+    return logging.get_monitor_time_range()
 
 def load_paste_app(app_name):
     """Builds and returns a WSGI app from a paste config file.

@@ -18,7 +18,7 @@ eventlet.monkey_patch()
 import contextlib
 import sys
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common import log as logging
 from check_mk_agent.openstack.common import rpc

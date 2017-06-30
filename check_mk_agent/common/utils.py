@@ -21,11 +21,13 @@
 
 """Utilities and helper functions."""
 
+import logging
 import signal
 import socket
 
 from eventlet.green import subprocess
 
+LOG = logging.getLogger(__name__)
 
 def get_hostname():
     return socket.gethostname()
@@ -42,3 +44,13 @@ def subprocess_popen(args, stdin=None, stdout=None, stderr=None, shell=False,
     return subprocess.Popen(args, shell=shell, stdin=stdin, stdout=stdout,
                             stderr=stderr, preexec_fn=_subprocess_setup,
                             close_fds=True, env=env)
+
+def run_cmd_with_result(cmd, is_quite=False):
+    p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, close_fds=True)
+    stdout, stderr = p.communicate()
+    rc = p.returncode
+    if rc:
+        if not is_quite:
+            LOG.error("Failed to run cmd %s with error %s", cmd, stderr)
+    return (rc, stdout)

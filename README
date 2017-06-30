@@ -11,5 +11,13 @@ HOW TO INSTALL Check_MK Agent
     4. sudo cp ./xinetd.conf /etc/xinetd.d/check_mk
     5. sudo /etc/init.d/xinetd restart
 
+HOW TO test collection&process
+
+Do Loop Collection:
+stack@vm:~/check_mk_agent$ ./check_mk_agent/agent_loop.py
+
+Do Data Process
+stack@vm:~/check_mk_agent$ ./check_mk_agent/agent_process.py
+
 Tests:
     try using :$telnet -d IPADDRESS 6556 to get the locally initial raw data which would be processed by Server.

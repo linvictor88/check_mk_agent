@@ -15,7 +15,7 @@
 
 '''messaging based notification driver, with message envelopes'''
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common import context as req_context
 from check_mk_agent.openstack.common.gettextutils import _

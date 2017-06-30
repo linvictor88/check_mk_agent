@@ -18,4 +18,4 @@
 import gettext
 
 
-gettext.install('neutron', unicode=1)
+gettext.install('check_mk_agent', unicode=1)

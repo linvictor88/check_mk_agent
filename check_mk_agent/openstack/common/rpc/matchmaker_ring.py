@@ -19,7 +19,7 @@ return keys for direct exchanges, per (approximate) AMQP parlance.
 import itertools
 import json
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common.gettextutils import _
 from check_mk_agent.openstack.common import log as logging

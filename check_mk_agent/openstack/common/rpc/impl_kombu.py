@@ -25,7 +25,7 @@ import kombu
 import kombu.connection
 import kombu.entity
 import kombu.messaging
-from oslo.config import cfg
+from oslo_config import cfg
 import six
 
 from check_mk_agent.openstack.common import excutils

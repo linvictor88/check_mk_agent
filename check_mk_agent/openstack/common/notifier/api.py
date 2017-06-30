@@ -16,7 +16,7 @@
 import socket
 import uuid
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common import context
 from check_mk_agent.openstack.common.gettextutils import _

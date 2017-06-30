@@ -16,6 +16,11 @@ CPU_TOP = "Cpu(s)"
 STATE_RUNNING = 'running'
 STATE_DOWN = 'down'
 
+def get_percent(num, total):
+    if total == 0:
+        return 0
+    rc = float(num) / float(total) * 100;
+    return round(rc, 2)
 
 class Memory(abstract_device.AbstractDevice):
     """Memory device data collector.
@@ -75,6 +80,33 @@ class Cpu(abstract_device.AbstractDevice):
     """
 
     name = 'cpu'
+
+    def __init__(self, dp_pid=None, qemu_pids=[], ksoftirqd_pids=[], vhost_pids=[]):
+        self.cpuinfos = {}
+        self.init_device(None)
+        super(Cpu, self).__init__()
+
+        if dp_pid:
+            self.dp_pid = dp_pid
+            pid_plain_info = self.get_pid_plain_info(self.dp_pid)
+            self.parse_pid_plain_info(pid_plain_info, self.dp_pid)
+
+        self.qemu_pids = qemu_pids
+        LOG.info("Init monitor qemu pids: %s", qemu_pids)
+        for qemu_pid in qemu_pids:
+            qemu_pid_plain_info = self.get_pid_plain_info(qemu_pid)
+            self.parse_pid_plain_info(qemu_pid_plain_info, qemu_pid)
+
+        self.ksoftirqd_pids = ksoftirqd_pids
+        self.vhost_pids = vhost_pids
+        LOG.info("Init monitor ksoftirqd_pids: %s, vhost_pids: %s", ksoftirqd_pids, vhost_pids)
+        for ksoftirqd_pid in ksoftirqd_pids:
+            ksoftirqd_pid_plain_info = self.get_pid_plain_info(ksoftirqd_pid)
+            self.parse_pid_plain_info(ksoftirqd_pid_plain_info, ksoftirqd_pid)
+        for vhost_pid in vhost_pids:
+            vhost_pid_plain_info = self.get_pid_plain_info(vhost_pid)
+            self.parse_pid_plain_info(vhost_pid_plain_info, vhost_pid)
+
     def get_plain_info(self):
         """Get plain info of cpu.
         In order of user, nice, system, idle, iowait,
@@ -98,63 +130,254 @@ class Cpu(abstract_device.AbstractDevice):
         #plain_info.extend(top_info) 
         return plain_info
 
+    def get_pid_plain_info(self, pid):
+        """Get process plain info of cpu.
+
+        In order of user, nice, system, idle, iowait,
+        irq, softirq and steal
+        """
+        stat_file = "/proc/%s/stat" % pid
+        cmd = ['cat', stat_file]
+        plain_info = [line.split(' ') 
+                      for line in utils.execute(cmd).split('\n')]
+
+        LOG.debug("%s pid plain_info: %s", pid, plain_info)
+        return plain_info
+
+    def parse_pid_plain_info(self, plain_info, pid):
+        cpu_line = plain_info[0]
+        self.pid_us[pid] = float(cpu_line[13])
+        self.pid_sys[pid] = float(cpu_line[14])
+        self.pid_cus[pid] = float(cpu_line[15])
+        self.pid_csys[pid] = float(cpu_line[16])
+
+    def parse_pid_plain_info_now(self, plain_info, pid):
+        cpu_line = plain_info[0]
+        us_now = float(cpu_line[13])
+        sys_now = float(cpu_line[14])
+        cus_now = float(cpu_line[15])
+        csys_now = float(cpu_line[16])
+
+        us_delta = us_now + cus_now - self.pid_us[pid] - self.pid_cus[pid]
+        sys_delta = sys_now + csys_now - self.pid_sys[pid] - self.pid_csys[pid]
+
+        pid_cpu_infos = {
+            "user": get_percent(us_delta, self.jiffies_interval),
+            "system": get_percent(sys_delta, self.jiffies_interval)
+        }
+
+        self.pid_us[pid] = us_now
+        self.pid_sys[pid] = sys_now
+        self.pid_cus[pid] = cus_now
+        self.pid_sys[pid] = sys_now
+
+        return pid_cpu_infos
+
     def parse_plain_info(self, plain_info):
         cpuinfo = dict([(i[0].strip(), i[1].strip()) for i in plain_info ])
         LOG.debug(_("cpu_info: %s"), cpuinfo)
         self.count = len(cpuinfo) - 1
         for key, value in cpuinfo.items():
-            if key == 'cpu':
-                v = [int(x) for x in value.split()]
+            if key == CPU_SPEED:
+                self.speed = float(value)
+            elif not key.find('cpu'):
+                v = [float(x) for x in value.split()]
                 if len(v) < 8:
                     v = v + [0, 0, 0, 0]  # needed for Linux 2.4
-                self.user = v[0]
-                self.nice = v[1]
-                self.system = v[2]
-                self.idle = v[3]
-                self.iowait = v[4]
-                self.irq = v[5]
-                self.softirq = v[6]
-                self.steal = v[7]
-                self.total = sum(v[0:7])
-                #TODO(berlin) how to calculate the usage
-                self.usage = None
-                self.userHz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
-            elif key == CPU_SPEED:
+                self.user[key] = v[0]
+                self.nice[key] = v[1]
+                self.system[key] = v[2]
+                self.idle[key] = v[3]
+                self.iowait[key] = v[4]
+                self.irq[key] = v[5]
+                self.softirq[key] = v[6]
+                self.steal[key] = v[7]
+                self.total[key] = sum(v[0:7])
+
+    def parse_plain_info_now(self, plain_info):
+        cpuinfo = dict([(i[0].strip(), i[1].strip()) for i in plain_info ])
+        LOG.debug(_("now cpu_info: %s"), cpuinfo)
+        self.count = len(cpuinfo) - 1
+        jiff_count = 0;
+        jiff_total = 0;
+        for key, value in cpuinfo.items():
+            if key == CPU_SPEED:
                 self.speed = float(value)
-            #elif key == CPU_TOP:
-            #    v = [float(x.split('%')[0]) for x in value.split()]
-            #    self.workload = float(100) - v[3]
-            #    self.workload = "%.2f" % self.workload
+            elif not key.find('cpu'):
+                v = [float(x) for x in value.split()]
+                if len(v) < 8:
+                    v = v + [0, 0, 0, 0]  # needed for Linux 2.4
+                self.user_now[key] = v[0]
+                self.nice_now[key] = v[1]
+                self.system_now[key] = v[2]
+                self.idle_now[key] = v[3]
+                self.iowait_now[key] = v[4]
+                self.irq_now[key] = v[5]
+                self.softirq_now[key] = v[6]
+                self.steal_now[key] = v[7]
+                self.total_now[key] = sum(v[0:7])
+
+                user_delta = self.user_now[key] - self.user[key]
+                nice_delta = self.nice_now[key] - self.nice[key]
+                system_delta = self.system_now[key] - self.system[key]
+                idle_delta = self.idle_now[key] - self.idle[key]
+                iowait_delta = self.iowait_now[key] - self.iowait[key]
+                irq_delta = self.irq_now[key] - self.irq[key]
+                softirq_delta = self.softirq_now[key] - self.softirq[key]
+                steal_delta = self.steal_now[key] - self.steal[key]
+                total_delta = self.total_now[key] - self.total[key]
+
+                self.cpuinfos[key] = {
+                    'user':    get_percent(user_delta, total_delta),
+                    'system':  get_percent(system_delta, total_delta),
+                    'nice':    get_percent(nice_delta, total_delta),
+                    'idle':    get_percent(idle_delta, total_delta),
+                    'iowait':  get_percent(iowait_delta, total_delta),
+                    'hardirq': get_percent(irq_delta, total_delta),
+                    'softirq': get_percent(softirq_delta, total_delta),
+                    'steal':   get_percent(steal_delta, total_delta),
+                }
+
+                if key != "cpu":
+                    jiff_count += 1
+                    jiff_total += float(total_delta)
+
+                self.user[key] = self.user_now[key]
+                self.nice[key] = self.nice_now[key]
+                self.system[key] = self.system_now[key]
+                self.idle[key] = self.idle_now[key]
+                self.iowait[key] = self.iowait_now[key]
+                self.irq[key] = self.irq_now[key]
+                self.softirq[key] = self.softirq_now[key]
+                self.steal[key] = self.steal_now[key]
+                self.total[key] = self.total_now[key]
+        if jiff_count:
+            self.jiffies_interval = jiff_total / jiff_count
+        return self.cpuinfos
+
+    def get_cpu_now(self):
+        plain_info = self.get_plain_info()
+        return self.parse_plain_info_now(plain_info)
+
+    def get_dp_cpu_now(self):
+        pid_plain_info = self.get_pid_plain_info(self.dp_pid)
+        dp_pid_cpuinfos = {}
+        dp_pid_cpuinfos["dp_process_cpu"] = self.parse_pid_plain_info_now(pid_plain_info, self.dp_pid)
+        return dp_pid_cpuinfos
+
+    def get_ovs_kernel_cpu_now(self, ksoftirqd_pids, vhost_pids):
+        ovs_cpu_infos = {}
+
+        init_ksoftirqd_pids = list(set(ksoftirqd_pids) - set(self.ksoftirqd_pids))
+        monitor_ksoftirqd_pids = list(set(ksoftirqd_pids) - set(init_ksoftirqd_pids))
+        if init_ksoftirqd_pids:
+            LOG.info("Init monitor ksoftirqd pids: %s", init_ksoftirqd_pids)
+            for ksoftirqd_pid in init_ksoftirqd_pids:
+                ksoftirqd_pid_plain_info = self.get_pid_plain_info(ksoftirqd_pid)
+                self.parse_pid_plain_info(ksoftirqd_pid_plain_info, ksoftirqd_pid)
+        if monitor_ksoftirqd_pids:
+            ksoftirqd_cpu_infos = {}
+            ovs_cpu_infos['ksoftirqd'] = {}
+            ovs_cpu_infos['ksoftirqd']['user'] = 0.0
+            ovs_cpu_infos['ksoftirqd']['system'] = 0.0
+            for ksoftirqd_pid in monitor_ksoftirqd_pids:
+                ksoftirqd_pid_plain_info = self.get_pid_plain_info(ksoftirqd_pid)
+                ksoftirqd_cpu_infos[ksoftirqd_pid] = self.parse_pid_plain_info_now(ksoftirqd_pid_plain_info, ksoftirqd_pid)
+            for ksoftirqd_pid in monitor_ksoftirqd_pids:
+                ovs_cpu_infos['ksoftirqd']['user'] += ksoftirqd_cpu_infos[ksoftirqd_pid]['user']
+                ovs_cpu_infos['ksoftirqd']['system'] += ksoftirqd_cpu_infos[ksoftirqd_pid]['system']
+
+        init_vhost_pids = list(set(vhost_pids) - set(self.vhost_pids))
+        monitor_vhost_pids = list(set(vhost_pids) - set(init_vhost_pids))
+        if init_vhost_pids:
+            LOG.info("Init monitor vhost pids: %s", init_vhost_pids)
+            for vhost_pid in init_vhost_pids:
+                vhost_pid_plain_info = self.get_pid_plain_info(vhost_pid)
+                self.parse_pid_plain_info(vhost_pid_plain_info, vhost_pid)
+        if monitor_vhost_pids:
+            vhost_cpu_infos = {}
+            ovs_cpu_infos['vhost'] = {}
+            ovs_cpu_infos['vhost']['user'] = 0.0
+            ovs_cpu_infos['vhost']['system'] = 0.0
+            for vhost_pid in monitor_vhost_pids:
+                vhost_pid_plain_info = self.get_pid_plain_info(vhost_pid)
+                vhost_cpu_infos[vhost_pid] = self.parse_pid_plain_info_now(vhost_pid_plain_info, vhost_pid)
+            for vhost_pid in monitor_vhost_pids:
+                ovs_cpu_infos['vhost']['user'] += vhost_cpu_infos[vhost_pid]['user']
+                ovs_cpu_infos['vhost']['system'] += vhost_cpu_infos[vhost_pid]['system']
+
+        user_total = 0.0
+        system_total = 0.0
+        for process, data_dict in ovs_cpu_infos.items():
+            user_total += data_dict['user']
+            system_total += data_dict['system']
+
+        ovs_cpu_infos['ovs-kernel'] = {}
+        ovs_cpu_infos['ovs-kernel']['user'] = user_total
+        ovs_cpu_infos['ovs-kernel']['system'] = system_total
+
+        return ovs_cpu_infos
+
+    def get_qemu_cpu_now(self, qemu_pids):
+        init_qemu_pids = list(set(qemu_pids) - set(self.qemu_pids))
+        monitor_qemu_pids = list(set(qemu_pids) - set(init_qemu_pids))
+        if init_qemu_pids:
+            LOG.info("Init monitor qemu pids: %s", qemu_pids)
+            for qemu_pid in init_qemu_pids:
+                qemu_pid_plain_info = self.get_pid_plain_info(qemu_pid)
+                self.parse_pid_plain_info(qemu_pid_plain_info, qemu_pid)
+        qemu_cpu_infos = {}
+        if monitor_qemu_pids:
+            for qemu_pid in monitor_qemu_pids:
+                qemu_pid_plain_info = self.get_pid_plain_info(qemu_pid)
+                qemu_cpu_key = "qemu_%s" % qemu_pid
+                qemu_cpu_infos[qemu_cpu_key] = self.parse_pid_plain_info_now(qemu_pid_plain_info, qemu_pid)
+        return qemu_cpu_infos
+
+    def get_jiffies_interval(self):
+        return self.jiffies_interval
 
     def get_device_dict(self):
-            return {'user': self.user,
-                    'nice': self.nice,
-                    'system': self.system,
-                    'idle': self.idle,
-                    'iowait': self.iowait,
-                    'irq': self.irq,
-                    'softirq': self.softirq,
-                    'steal': self.steal,
-                    'total': self.total,
-                    'count': self.count,
-                    'userHz': self.userHz,
-                    'usage': self.usage,
-                    'speed': self.speed}
+        return self.cpuinfos
 
     def init_device(self, device_dict):
-        self.count = device_dict['count']
-        self.user = device_dict['user']
-        self.nice = device_dict['nice']
-        self.system = device_dict['system']
-        self.idle = device_dict['idle']
-        self.iowait = device_dict['iowait']
-        self.irq = device_dict['irq']
-        self.softirq = device_dict['softirq']
-        self.steal = device_dict['steal']
-        self.total = device_dict['total']
-        self.userHz = device_dict['userHz']
-        self.usage = device_dict['usage']
-        self.speed = device_dict['speed']
+        self.jiffies_interval = 100
+
+        self.count = {}
+        self.user = {}
+        self.nice = {}
+        self.system = {}
+        self.idle = {}
+        self.iowait = {}
+        self.irq = {}
+        self.softirq = {}
+        self.steal = {}
+        self.total = {}
+        self.userHz = {}
+        self.speed = {}
+
+        self.count_now = {}
+        self.user_now = {}
+        self.nice_now = {}
+        self.system_now = {}
+        self.idle_now = {}
+        self.iowait_now = {}
+        self.irq_now = {}
+        self.softirq_now = {}
+        self.steal_now = {}
+        self.total_now = {}
+        self.userHz_now = {}
+        self.speed_now = {}
+
+        self.pid_us = {}
+        self.pid_sys = {}
+        self.pid_cus = {}
+        self.pid_csys = {}
+
+        self.pid_us_now = {}
+        self.pid_sys_now = {}
+        self.pid_cus_now = {}
+        self.pid_csys_now = {}
 
 
 class System(abstract_device.AbstractDevice):

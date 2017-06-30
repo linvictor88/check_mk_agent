@@ -275,7 +275,7 @@ import os.path
 import re
 import time
 
-from oslo.config import cfg
+from oslo_config import cfg
 import six
 from sqlalchemy import exc as sqla_exc
 from sqlalchemy.interfaces import PoolListener

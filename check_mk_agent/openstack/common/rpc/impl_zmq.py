@@ -22,7 +22,7 @@ import uuid
 
 import eventlet
 import greenlet
-from oslo.config import cfg
+from oslo_config import cfg
 import six
 from six import moves
 

@@ -25,7 +25,7 @@ takes no arguments.  The method can return any object that implements DB
 API methods.
 """
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.openstack.common import importutils
 

@@ -57,7 +57,7 @@ as it allows particular rules to be explicitly disabled.
 import abc
 import re
 
-from oslo.config import cfg
+from oslo_config import cfg
 import six
 
 from check_mk_agent.openstack.common import fileutils

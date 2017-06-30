@@ -22,7 +22,7 @@ import logging
 import os
 import sys
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from check_mk_agent.agent.common import config
 from check_mk_agent.agent.linux import utils
